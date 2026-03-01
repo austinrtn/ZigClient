@@ -68,16 +68,16 @@ pub fn main() !void {
     // Here we repeatidly try to send request to server until
     // either success or timeout 
     timer.reset();
+
     while(true) {
-        const response: ?*ZigClient.Res = client.get(response_url, .{}) catch null; 
-        
+        const response: ?*ZigClient.Res  = client.get(response_url, .{}) catch null; 
+
         if(response) |res| {
             defer res.deinit();
-
             ctx.mutex.lock();
             defer ctx.mutex.unlock();
-            ctx.response_file_name_header = res.headers.get("X-File-Name") orelse "Not Found";
-            ctx.response_body = allocator.dupe(u8, res.body) catch "Mem err";
+            ctx.response_file_name_header = res.headers.get("Test-Header") orelse "Not Found";
+            ctx.response_body = res.body;
             break;
         } else if(timer.read() >= timeout){
             std.debug.print("Did not get response from: {s}\n", .{response_url});
@@ -90,7 +90,6 @@ pub fn main() !void {
         .{ctx.ran_event_listener_callback, ctx.response_file_name_header, ctx.response_body}
     );
 
-    allocator.destroy(ctx.response_body);
 }
 
 const Context = struct {
