@@ -1,5 +1,5 @@
-const HttpClientApi = @import("HttpClient.zig");
+const ZigClientApi = @import("ZigClient.zig");
 
-pub const HttpClient = HttpClientApi.HttpClient;
-pub const EventListener = HttpClientApi.EventListener;
-pub const Response = HttpClientApi.Response;
+pub const ZigClient = ZigClientApi.ZigClient;
+pub const EventListener = ZigClientApi.EventListener;
+pub const Response = ZigClientApi.Response;
