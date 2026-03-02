@@ -3,7 +3,6 @@ This tool allows for simple GET server request, as well as create sepearate thre
 
 ## Setup
 First, run this command in your project:
-
 `zig fetch --save https://github.com/austinrtn/ZigClient/archive/refs/tags/v0.1.0.tar.gz`
 
 Next, copy and past this into your `build.zig` file: 
