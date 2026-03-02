@@ -64,7 +64,7 @@ pub const Response = struct {
     req: *std.http.Client.Request,
     status: std.http.Status,
 
-    headers: std.StringHashMap([]const u8), 
+    headers: []std.http.Header,
     body: []const u8,
 
     pub fn init(allocator: std.mem.Allocator, url: []const u8, req_options: std.http.Client.RequestOptions) (ReqErrors || std.mem.Allocator.Error)!Response {
@@ -72,7 +72,8 @@ pub const Response = struct {
         self.arena = std.heap.ArenaAllocator.init(allocator);
         const arena_alloc = self.arena.allocator();
 
-        self.headers = std.StringHashMap([]const u8).init(arena_alloc);
+        var header_list = std.ArrayList([]const u8){};
+        defer header_list.deinit();
 
         // New client to make request
         self.client = try arena_alloc.create(std.http.Client);
@@ -96,9 +97,10 @@ pub const Response = struct {
         // Obtain headers and store in hashmap 
         var header_iter = res.head.iterateHeaders();
         while(header_iter.next()) |header| {
-            try self.headers.put(try arena_alloc.dupe(u8, header.name), try arena_alloc.dupe(u8, header.value));
+            try header_list.append(try allocator.dupe(std.http.Header, header));
         }
 
+        self.headers = try header_list.toOwnedSlice(allocator);
         self.body = res.reader(&.{}).allocRemaining(arena_alloc, .unlimited) catch return ReqErrors.FailedReadingBody;
 
         return self;
@@ -106,15 +108,25 @@ pub const Response = struct {
 
     pub fn deinit(self: *@This()) void {
         const allocator = self.arena.allocator();
+        for(self.headers) |header| {
+            allocator.free(header);
+        }
+        allocator.free(self.headers);
         self.req.deinit(); 
         self.client.deinit();
-        self.headers.deinit();
 
         allocator.free(self.body);
         allocator.destroy(self.req);
         allocator.destroy(self.client);
 
         self.arena.deinit();
+    }
+
+    pub fn getHeader(self: *@This(), header_key: []const u8) ?[]const u8 {
+        for(self.headers) |header| {
+            if(std.mem.eql(u8, header.name, header_key)) { return header.value; }
+        }
+        return null;
     }
 };
 

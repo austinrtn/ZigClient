@@ -21,7 +21,7 @@ const Context = struct {};
 const ZigClient = Client.ZigClient(Context);
 ```
 
-### Using the API 
+### Getting Started
 Create a ZigClient using the ZigClient init function.  You'll need to create 
 an instance of your Context struct: 
 ```zig
@@ -30,6 +30,25 @@ var client = ZigClient.init(allocator, &ctx);
 defer client.deinit();
 ```
 
+#### GET Reqeust
+To send a get request, use the ZigClient.get function which returns both the response status, headers and body.
+```zig
+var response: ZigClient.Res = try client.get(response_url, .{});
+```
+
+To get specific headers, you can either use the Response.getHeader method, or you can loop through the headers slice.  
+It should be noted that the getHeader function returns only one header value, and that headers are case sensitive.
+The method return null if no header is found.
+```zig
+const header_val = response.getHeader("Test-header") orelse error.NoHeader;
+// Or
+for(response.headers) |header| {
+    if(std.mem.eql(u8, header.name, "Test-Header")) {
+        // Run code 
+    }
+}
+```
+#### SSE Event Listener
 To create an SSE event listener, call ZigClient.NewEventListener and use the new listener to add events. 
 The first parameter takes the message that you are listening to the server for, the second parameter 
 is the function to be ran the onevent function, which is the function that will be called once the message is detected. 
@@ -46,4 +65,3 @@ try listener.newEvent(
     }
 );
 ```
-

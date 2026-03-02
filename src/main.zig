@@ -65,7 +65,7 @@ pub fn main() !void {
             ctx.mutex.lock();
             defer ctx.mutex.unlock();
 
-            try ctx.copyVal("test_header", res.headers.get("Test-Header") orelse "Not Found");
+            try ctx.copyVal("test_header", res.getHeader("Test-Header") orelse "Not Found");
             try ctx.copyVal("response_body", res.body);
 
             break;
