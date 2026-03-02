@@ -15,7 +15,8 @@ const mod = b.addModule("ZigClient", .{
 ```
 
 Finally, add this to the top of your project file: 
-```zig const Client = @import("ZigClient.zig");
+```zig 
+const Client = @import("ZigClient.zig");
 const Context = struct {};
 const ZigClient = Client.ZigClient(Context);
 ```
