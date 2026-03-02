@@ -2,7 +2,8 @@
 This tool allows for simple GET server request, as well as create sepearate threads for SSE EventListeners.  
 
 ## Setup
-First, run this command in your project:\n 
+First, run this command in your project:
+
 `zig fetch --save https://github.com/austinrtn/ZigClient/archive/refs/tags/v0.1.0.tar.gz`
 
 Next, copy and past this into your `build.zig` file: 
