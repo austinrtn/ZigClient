@@ -2,9 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const ReqErrors = error{
-    BadURL,
-    RequestSendFailed,
-    SendBodilessFailed,
+    BadURL, // Unable to parse URL to URI 
+    RequestSendFailed, // Never reached the server
+    SendBodilessFailed, // Was unable to send bodiless request 
     RecivedHeadersFailed,
     FailedReadingBody,
 };
@@ -25,12 +25,11 @@ return struct {
     ctx: CtxField,
     listeners: std.ArrayList(*EventListener(ContextType)) = .{},
 
-    /// Create new instanceo of HTTPClient 
+    /// Create new instance of HTTPClient 
     pub fn init(allocator: std.mem.Allocator, ctx: CtxField) Self {
         const self: Self = .{
             .allocator = allocator,
             .ctx = ctx,
-
         };
         return self;
     }
@@ -43,15 +42,12 @@ return struct {
         self.listeners.deinit(self.allocator);
     }
 
-    pub fn get(self: *Self, url: []const u8, req_options: std.http.Client.RequestOptions) (ReqErrors || std.mem.Allocator.Error)!*Response{
-        const response_ptr = try self.allocator.create(Response);
-        errdefer self.allocator.destroy(response_ptr);
-        response_ptr.* = try Response.init(self.allocator, url, req_options);
-        errdefer response_ptr.deinit();
-
-        return response_ptr;
+    /// Send GET request to server 
+    pub fn get(self: *Self, url: []const u8, req_options: std.http.Client.RequestOptions) (ReqErrors || std.mem.Allocator.Error)!Response{
+        return try Response.init(self.allocator, url, req_options);
     }
 
+    /// Spin up new event listener 
     pub fn newEventListener(self: *Self) !*EventListener(ContextType) {
         const event_listener_ptr = try self.allocator.create(EventListener(ContextType));
         event_listener_ptr.* = EventListener(ContextType).init(self.allocator, self);  
@@ -60,29 +56,32 @@ return struct {
     }
 };}
 
-pub const Response = struct {
-    stdout: *std.io.Writer,
 
-    allocator: std.mem.Allocator,
+pub const Response = struct {
+    arena: std.heap.ArenaAllocator,
     client: *std.http.Client,
+
     req: *std.http.Client.Request,
     status: std.http.Status,
+
     headers: std.StringHashMap([]const u8), 
     body: []const u8,
 
     pub fn init(allocator: std.mem.Allocator, url: []const u8, req_options: std.http.Client.RequestOptions) (ReqErrors || std.mem.Allocator.Error)!Response {
         var self: @This() = undefined;
-        self.allocator = allocator;
-        self.headers = std.StringHashMap([]const u8).init(allocator);
+        self.arena = std.heap.ArenaAllocator.init(allocator);
+        const arena_alloc = self.arena.allocator();
+
+        self.headers = std.StringHashMap([]const u8).init(arena_alloc);
 
         // New client to make request
-        self.client = try allocator.create(std.http.Client);
-        errdefer self.allocator.destroy(self.client);
-        self.client.* = std.http.Client{.allocator = self.allocator};
+        self.client = try arena_alloc.create(std.http.Client);
+        errdefer arena_alloc.destroy(self.client);
+        self.client.* = std.http.Client{.allocator = arena_alloc};
         errdefer self.client.deinit();
 
-        self.req = try self.allocator.create(std.http.Client.Request);
-        errdefer allocator.destroy(self.req);
+        self.req = try arena_alloc.create(std.http.Client.Request);
+        errdefer arena_alloc.destroy(self.req);
 
         const uri = std.Uri.parse(url) catch return ReqErrors.BadURL;
         self.req.* = self.client.request(.GET, uri, req_options) catch return ReqErrors.RequestSendFailed;
@@ -94,25 +93,28 @@ pub const Response = struct {
 
         var res = self.req.receiveHead(&redir_buf) catch return ReqErrors.RecivedHeadersFailed;
 
+        // Obtain headers and store in hashmap 
         var header_iter = res.head.iterateHeaders();
         while(header_iter.next()) |header| {
-            try self.headers.put(header.name, header.value);
+            try self.headers.put(try arena_alloc.dupe(u8, header.name), try arena_alloc.dupe(u8, header.value));
         }
 
-        self.body = res.reader(&.{}).allocRemaining(self.allocator, .unlimited) catch return ReqErrors.FailedReadingBody;
+        self.body = res.reader(&.{}).allocRemaining(arena_alloc, .unlimited) catch return ReqErrors.FailedReadingBody;
 
         return self;
     }
 
     pub fn deinit(self: *@This()) void {
+        const allocator = self.arena.allocator();
         self.req.deinit(); 
         self.client.deinit();
         self.headers.deinit();
 
-        self.allocator.free(self.body);
-        self.allocator.destroy(self.req);
-        self.allocator.destroy(self.client);
-        self.allocator.destroy(self);
+        allocator.free(self.body);
+        allocator.destroy(self.req);
+        allocator.destroy(self.client);
+
+        self.arena.deinit();
     }
 };
 
