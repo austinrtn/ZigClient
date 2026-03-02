@@ -17,7 +17,7 @@ const mod = b.addModule("ZigClient", .{
 Finally, add this to the top of your project file: 
 ```zig 
 const Client = @import("ZigClient.zig");
-const Context = struct {};
+const Context = struct {}; // Leave struct empty if no context
 const ZigClient = Client.ZigClient(Context);
 ```
 
@@ -41,10 +41,10 @@ It should be noted that the getHeader function returns only one header value, an
 The method return null if no header is found.
 ```zig
 const header_val = response.getHeader("Test-header") orelse error.NoHeader;
-// Or
+// Or to itterate headers 
 for(response.headers) |header| {
     if(std.mem.eql(u8, header.name, "Test-Header")) {
-        // Run code 
+        std.debug.print("{s}\n", .{header.value})
     }
 }
 ```
@@ -59,9 +59,54 @@ var listener = try client.newEventListener();
 try listener.newEvent(
     "data::connection_established",
     struct {
-        fn onevent(event: *ZigClient.Event) !void {
+        fn onevent(event: *ZigClient.Event) !void { // Must contain event parameter and return error-void union
            _ = event; 
         }
     }
 );
+
+// Creates a sepearate thread where messages are listened for 
+try listener.startListening();
+defer listener.stopListening(); // Joins thread and ends listening.  If missing, will cause runtim panic in debug mode
+```
+
+#### Context Struct 
+The Context struct is stored in the client as the 'ctx' variable and is completely user defined.  
+This variable is intended to allow the user to pass state from the main program to the event listner thread(s) and back again.  
+While the ctx variable is accessable throught the event pointer in the onevent function, it is not inherently thread-safe and 
+requires either a Mutex field, or fields that get manipulated across threads should be atomic.  Memory saved to the variable 
+will also need to be manually managed.
+
+```zig
+/// Example of context struct with memory / thread safe usage
+//
+const Context = struct {
+    arena: std.heap.AreanAllocator, 
+    mutex: std.Thread.Mutex = .{},
+    bar: []const u8 = "",
+
+    fn init(gpa: std.mem.Allocator) @This() {
+        return .{.arena = std.heap.AreanAllocator.init(allocator)}; 
+    }
+
+    fn deinit(self: *@This()) {
+        self.arean.allocator().deinit();
+    }
+};
+
+// Initializing context for main clinet instance
+var ctx = Context{};
+defer ctx.deinit();
+
+var client = ZigClient.init(allocator, &ctx);
+defer client.deinit(); 
+
+// Durring onevent EventListener function 
+fn foo(event: *ZigClient.Event) !void {
+    // Prevent multithread race conditions
+    event.ctx.mutex.lock();
+    defer event.mutex.unlock;
+
+    event.ctx.bar = try event.ctx.allocator.dupe(u8, "Hello World");
+}
 ```

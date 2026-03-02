@@ -160,6 +160,7 @@ return struct {
         return self.listening.load(.acquire);
     }
 
+    /// Not for API use
     fn setIsListening(self: *Self, val: bool) void {
         self.listening.store(val, .release);
     }
