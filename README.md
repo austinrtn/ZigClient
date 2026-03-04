@@ -1,7 +1,7 @@
 # Zig HTTP Client Tool 
 This tool allows for simple GET server request, as well as create sepearate threads for SSE event listener.  
 
-## Setup
+# Setup
 First, run this command in your project:
 ```zig fetch --save https://github.com/austinrtn/ZigClient/archive/refs/tags/v0.1.0.tar.gz```
 
@@ -24,7 +24,7 @@ const Context = struct {}; // Leave struct empty if no context
 const ZigClient = Client.ZigClient(Context);
 ```
 
-### Getting Started
+# Getting Started
 Create a ZigClient using the ZigClient init function.  You'll need to create 
 an instance of your Context struct: 
 ```zig
@@ -33,7 +33,7 @@ var client = ZigClient.init(allocator, &ctx);
 defer client.deinit();
 ```
 
-#### GET Reqeust
+## GET Reqeust
 To send a get request, use the ZigClient.get function which returns both the response status, headers and body.
 ```zig
 var response: ZigClient.Res = try client.get(response_url, .{});
@@ -51,7 +51,7 @@ for(response.headers) |header| {
     }
 }
 ```
-#### SSE Event Listener
+## SSE Event Listener
 To create an SSE event listener, call ZigClient.NewEventListener and use the new listener to add events. 
 The first parameter takes the message that you are listening to the server for, the second parameter 
 is the function to be ran the onevent function, which is the function that will be called once the message is detected.
@@ -73,7 +73,7 @@ try listener.startListening();
 defer listener.stopListening(); // Joins thread and ends listening.  If missing, will cause runtim panic in debug mode
 ```
 
-#### Context Struct 
+# Context Struct 
 The Context struct is stored in the client as the 'ctx' variable and is completely user defined.  
 This variable is intended to allow the user to pass state from the main program to the event listner thread(s) and back again.  
 While the ctx variable is accessable throught the event pointer in the onevent function, it is not inherently thread-safe and 
@@ -84,12 +84,12 @@ will also need to be manually managed.
 /// Example of context struct with memory / thread safe usage
 //
 const Context = struct {
-    arena: std.heap.AreanAllocator, 
+    arena: std.heap.ArenaAllocator, 
     mutex: std.Thread.Mutex = .{},
     bar: []const u8 = "",
 
     fn init(gpa: std.mem.Allocator) @This() {
-        return .{.arena = std.heap.AreanAllocator.init(allocator)}; 
+        return .{.arena = std.heap.ArenaAllocator.init(allocator)}; 
     }
 
     fn deinit(self: *@This()) {
