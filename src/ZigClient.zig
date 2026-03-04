@@ -14,6 +14,7 @@ pub fn ZigClient(comptime ContextType: type) type{
 return struct {
     pub const Self = @This();
     pub const Res = Response;
+    pub const Listener = EventListener(ContextType);
 
     pub const Event = struct {
         msg: []const u8,
