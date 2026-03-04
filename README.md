@@ -7,16 +7,19 @@ First, run this command in your project:
 
 Next, copy and past this into your `build.zig` file: 
 ```zig 
-const mod = b.addModule("ZigClient", .{
-      .root_source_file = b.path("src/root.zig"),
+  const zigclient_dep = b.dependency("ZigClient", .{
       .target = target,
       .optimize = optimize,
-});
+  });
+  const zigclient_mod = zigclient_dep.module("ZigClient");
+
+  // then when creating your exe/module:
+  exe.root_module.addImport("ZigClient", zigclient_mod);
 ```
 
 Finally, add this to the top of your project file: 
 ```zig 
-const Client = @import("ZigClient.zig");
+const Client = @import("ZigClient");
 const Context = struct {}; // Leave struct empty if no context
 const ZigClient = Client.ZigClient(Context);
 ```
@@ -51,7 +54,7 @@ for(response.headers) |header| {
 #### SSE Event Listener
 To create an SSE event listener, call ZigClient.NewEventListener and use the new listener to add events. 
 The first parameter takes the message that you are listening to the server for, the second parameter 
-is the function to be ran the onevent function, which is the function that will be called once the message is detected. 
+is the function to be ran the onevent function, which is the function that will be called once the message is detected.
 The on event function requires an ZigClient.Event pointer.
 ```zig 
 var listener = try client.newEventListener();

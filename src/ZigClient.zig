@@ -72,7 +72,7 @@ pub const Response = struct {
         self.arena = std.heap.ArenaAllocator.init(allocator);
         const arena_alloc = self.arena.allocator();
 
-        var header_list = std.ArrayList([]const u8){};
+        var header_list = std.ArrayList(std.http.Header){};
         defer header_list.deinit();
 
         // New client to make request
@@ -97,7 +97,7 @@ pub const Response = struct {
         // Obtain headers and store in hashmap 
         var header_iter = res.head.iterateHeaders();
         while(header_iter.next()) |header| {
-            try header_list.append(try allocator.dupe(std.http.Header, header));
+            try header_list.append(try arena_alloc.dupe(std.http.Header, header));
         }
 
         self.headers = try header_list.toOwnedSlice(allocator);
