@@ -22,6 +22,7 @@ return struct {
         onEvent: *const fn(_: *@This()) anyerror!void,
         once: bool, 
         triggered: bool = false,
+        timeout: u32 = 2000,
     };
 
     allocator: std.mem.Allocator,
@@ -86,7 +87,7 @@ pub const Response = struct {
 
         self.req = try arena_alloc.create(std.http.Client.Request);
         const uri = std.Uri.parse(url) catch return ReqErrors.BadURL;
-        self.req.* = self.client.request(.GET, uri, req_options) catch return ReqErrors.RequestSendFailed;
+        self.req.* = self.client.request(.GET, uri, std.http.Client.RequestOptions{.handle_continue}) catch return ReqErrors.RequestSendFailed;
         errdefer self.req.deinit();
 
         // Send request to server
@@ -215,7 +216,6 @@ return struct {
         var redir_buf: [4096]u8 = undefined;
         var res_reader: ?*std.io.Reader = null;
 
-        self.setIsListening(true);
         while(true) {
             if(!self.isListening()) break;
 
