@@ -20,6 +20,8 @@ return struct {
         msg: []const u8,
         ctx: CtxField, 
         onEvent: *const fn(_: *@This()) anyerror!void,
+        once: bool, 
+        triggered: bool = false,
     };
 
     allocator: std.mem.Allocator,
@@ -71,20 +73,18 @@ pub const Response = struct {
     pub fn init(allocator: std.mem.Allocator, url: []const u8, req_options: std.http.Client.RequestOptions) (ReqErrors || std.mem.Allocator.Error)!Response {
         var self: @This() = undefined;
         self.arena = std.heap.ArenaAllocator.init(allocator);
+        errdefer self.arena.deinit();
         const arena_alloc = self.arena.allocator();
 
         var header_list = std.ArrayList(std.http.Header){};
-        defer header_list.deinit();
+        defer header_list.deinit(arena_alloc);
 
         // New client to make request
         self.client = try arena_alloc.create(std.http.Client);
-        errdefer arena_alloc.destroy(self.client);
         self.client.* = std.http.Client{.allocator = arena_alloc};
         errdefer self.client.deinit();
 
         self.req = try arena_alloc.create(std.http.Client.Request);
-        errdefer arena_alloc.destroy(self.req);
-
         const uri = std.Uri.parse(url) catch return ReqErrors.BadURL;
         self.req.* = self.client.request(.GET, uri, req_options) catch return ReqErrors.RequestSendFailed;
         errdefer self.req.deinit();
@@ -98,28 +98,24 @@ pub const Response = struct {
         // Obtain headers and store in hashmap 
         var header_iter = res.head.iterateHeaders();
         while(header_iter.next()) |header| {
-            try header_list.append(try arena_alloc.dupe(std.http.Header, header));
+            try header_list.append( 
+                arena_alloc, 
+                std.http.Header{
+                    .name = try arena_alloc.dupe(u8, header.name),
+                    .value = try arena_alloc.dupe(u8, header.value),
+                },
+            );
         }
 
-        self.headers = try header_list.toOwnedSlice(allocator);
+        self.status = res.head.status;
+        self.headers = try header_list.toOwnedSlice(arena_alloc);
         self.body = res.reader(&.{}).allocRemaining(arena_alloc, .unlimited) catch return ReqErrors.FailedReadingBody;
 
         return self;
     }
 
     pub fn deinit(self: *@This()) void {
-        const allocator = self.arena.allocator();
-        for(self.headers) |header| {
-            allocator.free(header);
-        }
-        allocator.free(self.headers);
-        self.req.deinit(); 
-        self.client.deinit();
-
-        allocator.free(self.body);
-        allocator.destroy(self.req);
-        allocator.destroy(self.client);
-
+        self.req.deinit();
         self.arena.deinit();
     }
 
@@ -130,7 +126,6 @@ pub const Response = struct {
         return null;
     }
 };
-
 
 pub fn EventListener(comptime ContextType: type) type {
     const ZigClientT = ZigClient(ContextType);
@@ -148,7 +143,6 @@ return struct {
     events: std.ArrayList(Event) = .{},
     connected: bool = false,
 
-
     pub fn init(allocator: std.mem.Allocator, http_client: *ZigClientT) Self {
         return .{
             .allocator = allocator, 
@@ -156,30 +150,6 @@ return struct {
             .client = std.http.Client{.allocator = allocator}, 
         };
     }
-
-    pub fn isListening(self: *Self) bool {
-        return self.listening.load(.acquire);
-    }
-
-    /// Not for API use
-    fn setIsListening(self: *Self, val: bool) void {
-        self.listening.store(val, .release);
-    }
-
-    pub fn newEvent(
-        self: *Self, 
-        eventMsg: []const u8, 
-        comptime onEvent: *const fn(event: *Event) anyerror!void )!void {
-
-        const event = Event{
-            .msg = eventMsg, 
-            .onEvent = onEvent,
-            .ctx = self.http_client.ctx, 
-        };
-
-        try self.events.append(self.allocator, event);
-    }
-
 
     pub fn deinit(self: *Self) void {
         const was_running = self.isListening();
@@ -194,6 +164,48 @@ return struct {
         self.events.deinit(self.allocator);
         if(self.req) |*req| req.deinit(); 
         self.client.deinit();
+    }
+
+    pub fn isListening(self: *Self) bool {
+        return self.listening.load(.acquire);
+    }
+
+    /// Use the Event Message of a one time Event to reset it so it can be listened for by the server again  
+    pub fn resetEvent(self: *Self, event_msg: []const u8) void {
+        for(self.events.items) |*event| {
+            if(std.mem.eql(u8, event.msg, event_msg)) {
+                event.triggered = false;
+                return;
+            }
+        }
+    }
+
+    /// Reset all one time events so that they can be listened for by the server again
+    pub fn resetAllEvents(self: *Self) void {
+        for(self.events.items) |*event| {
+            event.triggered = false;
+        }
+    }
+
+    /// Not for API use
+    fn setIsListening(self: *Self, val: bool) void {
+        self.listening.store(val, .release);
+    }
+
+    pub fn newEvent(
+        self: *Self, 
+        eventMsg: []const u8, 
+        once: bool,
+        comptime onEvent: *const fn(event: *Event) anyerror!void )!void {
+
+        const event = Event{
+            .msg = eventMsg, 
+            .once = once,
+            .onEvent = onEvent,
+            .ctx = self.http_client.ctx, 
+        };
+
+        try self.events.append(self.allocator, event);
     }
 
     pub fn listen(self: *Self, url: []const u8) !void {
@@ -233,7 +245,11 @@ return struct {
                     }
 
                     if(response) |*res| {
-                        if(res.head.status == .ok) self.connected = true else continue;
+                        if(res.head.status == .ok){
+                            self.connected = true;
+                            self.resetAllEvents();
+                        }  else continue;
+
                         res_reader = res.reader(&res_buf);
                     } else continue; 
                 } else continue;
@@ -247,7 +263,10 @@ return struct {
 
                 for(self.events.items) |*event| {
                     if(!std.mem.eql(u8, event.msg, server_msg)) continue;
+                    if(event.once and event.triggered) continue;
+
                     try event.onEvent(event);
+                    if(event.once) event.triggered = true;
                 }
 
             } else |err| switch(err) {

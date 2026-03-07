@@ -35,6 +35,7 @@ pub fn main() !void {
     // Adds event to be listend for
     try listener.newEvent(
         "data::connection_established", // Message eventListener thread is listening for 
+        false, // Set's 'once' field to true, meaning it gets deleted once message is detected
         struct { //Call back function to be ran when the event is triggered 
            fn callback(event: *ZigClient.Event) !void {
                 // Using mutex lock/unlock keeps the context data 'thread safe'. 
@@ -60,8 +61,9 @@ pub fn main() !void {
 
     while(true) {
         var response: ?ZigClient.Res  = client.get(response_url, .{}) catch null; 
+        defer { if(response) |*res| res.deinit(); }
+
         if(response) |*res| {
-            defer res.deinit();
             ctx.mutex.lock();
             defer ctx.mutex.unlock();
 
@@ -70,7 +72,7 @@ pub fn main() !void {
 
             break;
         } 
-        else if(timer.read() >= timeout){
+        if(timer.read() >= timeout){
             std.debug.print("Did not get response from: {s}\n", .{response_url});
             return error.Timeout;
         }
@@ -80,6 +82,9 @@ pub fn main() !void {
         "\nCallback ran: {} \nHeader Value: {s} \nBody Value: {s}", 
         .{ctx.ran_event_listener_callback, ctx.test_header, ctx.response_body}
     );
+
+    timer.reset();
+    while(timer.read() <= timeout) { continue; }
 }
 
 // Context struct to help share state between event listeners and the rest of the program.

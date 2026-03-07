@@ -53,7 +53,8 @@ for(response.headers) |header| {
 ```
 ## SSE Event Listener
 To create an SSE event listener, call ZigClient.NewEventListener and use the new listener to add events. 
-The first parameter takes the message that you are listening to the server for, the second parameter 
+The first parameter takes the message that you are listening to the server for, the second parameter determines wether the 
+message will be a one-time event and will not be triggered more than once (true), or wheteher it will persist after being triggered false.  The third parameter
 is the function to be ran the onevent function, which is the function that will be called once the message is detected.
 The on event function requires an ZigClient.Event pointer.
 ```zig 
@@ -61,6 +62,7 @@ var listener = try client.newEventListener();
 
 try listener.newEvent(
     "data::connection_established",
+    true,
     struct {
         fn onevent(event: *ZigClient.Event) !void { // Must contain event parameter and return error-void union
            _ = event; 
@@ -71,6 +73,13 @@ try listener.newEvent(
 // Creates a sepearate thread where messages are listened for 
 try listener.startListening();
 defer listener.stopListening(); // Joins thread and ends listening.  If missing, will cause runtim panic in debug mode
+```
+
+To *reset* a one time event so that it can be triggered again, you can use `listener.resetEvent` and pass the message of the event you are looking to reset, or 
+you can call `listener.resetAllEvents` to reset all events.
+
+```zig
+listener.resetEvent("data::connection_established");
 ```
 
 # Context Struct 
