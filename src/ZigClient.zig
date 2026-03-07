@@ -87,7 +87,7 @@ pub const Response = struct {
 
         self.req = try arena_alloc.create(std.http.Client.Request);
         const uri = std.Uri.parse(url) catch return ReqErrors.BadURL;
-        self.req.* = self.client.request(.GET, uri, std.http.Client.RequestOptions{.handle_continue}) catch return ReqErrors.RequestSendFailed;
+        self.req.* = self.client.request(.GET, uri, req_options) catch return ReqErrors.RequestSendFailed;
         errdefer self.req.deinit();
 
         // Send request to server
